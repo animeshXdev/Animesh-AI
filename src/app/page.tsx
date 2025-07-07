@@ -21,18 +21,18 @@ export default function Home() {
   const chatRef = useRef<HTMLDivElement>(null);
   const lastUserRef = useRef<HTMLDivElement | null>(null);
 
-  // Load from localStorage
+  // Load messages from localStorage
   useEffect(() => {
     const stored = localStorage.getItem('animesh-ai-chat');
     if (stored) setMessages(JSON.parse(stored));
   }, []);
 
-  // Save to localStorage
+  // Save messages to localStorage
   useEffect(() => {
     localStorage.setItem('animesh-ai-chat', JSON.stringify(messages));
   }, [messages]);
 
-  // Smart scroll: until last user message hits top
+  // Smart scroll
   useEffect(() => {
     const chatEl = chatRef.current;
     const userEl = lastUserRef.current;
@@ -41,7 +41,6 @@ export default function Home() {
 
     const userTop = userEl.getBoundingClientRect().top;
     const containerTop = chatEl.getBoundingClientRect().top;
-
     const isUserAboveTop = userTop <= containerTop + 10;
 
     if (!isUserAboveTop) {
@@ -52,7 +51,7 @@ export default function Home() {
     }
   }, [messages]);
 
-  // Show scroll-to-bottom button
+  // Scroll-to-bottom button toggle
   useEffect(() => {
     const el = chatRef.current;
     if (!el) return;
@@ -76,7 +75,7 @@ export default function Home() {
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
 
-    const userMessage = { role: 'user' as const, text: input };
+    const userMessage: ChatMessage = { role: 'user', text: input };
     const updatedMessages = [...messages, userMessage];
     setMessages(updatedMessages);
     setInput('');
@@ -97,20 +96,23 @@ export default function Home() {
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
       let done = false;
-      let aiText = '';
+      let fullText = '';
+      let previous = '';
 
-      // Add placeholder for streaming message
+      // Placeholder AI message
       setMessages((prev) => [...prev, { role: 'ai', text: '' }]);
 
       while (!done) {
         const { value, done: readerDone } = await reader!.read();
         if (value) {
           const chunk = decoder.decode(value, { stream: true });
-          aiText += chunk;
+          fullText += chunk;
+          const delta = fullText.replace(previous, '');
+          previous = fullText;
 
           setMessages((prev) => {
             const updated = [...prev];
-            updated[updated.length - 1] = { role: 'ai', text: aiText };
+            updated[updated.length - 1] = { role: 'ai', text: fullText };
             return updated;
           });
         }
@@ -131,14 +133,13 @@ export default function Home() {
     <main className="flex flex-col h-screen relative">
       {/* Header */}
       <header className="relative p-4 border-b border-border bg-background text-center">
-        <div className="flex justify-between  mx-auto">
+        <div className="flex justify-between mx-auto">
           <h1 className="text-2xl font-semibold">🤖 Animesh AI</h1>
-          <div className='sm:absolute sm:right-28'>
+          <div className="sm:absolute sm:right-28">
             <ModeToggle />
           </div>
-          <div></div>
-          
         </div>
+
         <Button
           variant="ghost"
           size="sm"
@@ -149,7 +150,7 @@ export default function Home() {
         </Button>
       </header>
 
-      {/* Messages */}
+      {/* Chat */}
       <div
         ref={chatRef}
         className="flex-1 overflow-y-auto px-4 py-6 space-y-4 bg-muted"
@@ -165,7 +166,7 @@ export default function Home() {
         {isLoading && <Message role="ai" text="..." />}
       </div>
 
-      {/* Scroll-to-bottom ⬇️ */}
+      {/* Scroll to bottom */}
       {showScrollButton && (
         <div className="absolute bottom-24 right-4 z-10">
           <Button
@@ -179,7 +180,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* Input (sticky) */}
+      {/* Input Box */}
       <div className="sticky bottom-0 p-4 border-t border-border bg-background z-20">
         <div className="flex gap-2">
           <Input
