@@ -13,15 +13,20 @@ export async function POST(req: NextRequest) {
 
     const encoder = new TextEncoder();
 
-    const stream = new ReadableStream({
-        async start(controller) {
-            for await (const chunk of result.stream) {
-                const text = chunk.text();
-                controller.enqueue(encoder.encode(text));
-            }
-            controller.close();
-        },
-    });
+const stream = new ReadableStream({
+  async start(controller) {
+    let previous = '';
+
+    for await (const chunk of result.stream) {
+      const full = chunk.text();
+      const delta = full.replace(previous, '');
+      previous = full;
+      controller.enqueue(encoder.encode(delta));
+    }
+
+    controller.close();
+  },
+});
 
     return new NextResponse(stream, {
         headers: { 'Content-Type': 'text/plain' },
