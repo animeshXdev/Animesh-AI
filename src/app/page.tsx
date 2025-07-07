@@ -1,103 +1,200 @@
-import Image from "next/image";
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
+import Message from '@/app/message';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { ModeToggle } from '@/components/modeToggle';
+import { ArrowDown } from 'lucide-react';
+
+type ChatMessage = {
+  role: 'user' | 'ai';
+  text: string;
+};
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [showScrollButton, setShowScrollButton] = useState(false);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const chatRef = useRef<HTMLDivElement>(null);
+  const lastUserRef = useRef<HTMLDivElement | null>(null);
+
+  // Load from localStorage
+  useEffect(() => {
+    const stored = localStorage.getItem('animesh-ai-chat');
+    if (stored) setMessages(JSON.parse(stored));
+  }, []);
+
+  // Save to localStorage
+  useEffect(() => {
+    localStorage.setItem('animesh-ai-chat', JSON.stringify(messages));
+  }, [messages]);
+
+  // Smart scroll: until last user message hits top
+  useEffect(() => {
+    const chatEl = chatRef.current;
+    const userEl = lastUserRef.current;
+
+    if (!chatEl || !userEl) return;
+
+    const userTop = userEl.getBoundingClientRect().top;
+    const containerTop = chatEl.getBoundingClientRect().top;
+
+    const isUserAboveTop = userTop <= containerTop + 10;
+
+    if (!isUserAboveTop) {
+      chatEl.scrollTo({
+        top: chatEl.scrollHeight,
+        behavior: 'smooth',
+      });
+    }
+  }, [messages]);
+
+  // Show scroll-to-bottom button
+  useEffect(() => {
+    const el = chatRef.current;
+    if (!el) return;
+
+    const handleScroll = () => {
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+      setShowScrollButton(!atBottom);
+    };
+
+    el.addEventListener('scroll', handleScroll);
+    return () => el.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const scrollToBottom = () => {
+    chatRef.current?.scrollTo({
+      top: chatRef.current.scrollHeight,
+      behavior: 'smooth',
+    });
+  };
+
+  const sendMessage = async () => {
+    if (!input.trim() || isLoading) return;
+
+    const userMessage = { role: 'user' as const, text: input };
+    const updatedMessages = [...messages, userMessage];
+    setMessages(updatedMessages);
+    setInput('');
+    setIsLoading(true);
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        body: JSON.stringify({
+          message: input,
+          history: updatedMessages.map((msg) => ({
+            role: msg.role === 'user' ? 'user' : 'model',
+            parts: [{ text: msg.text }],
+          })),
+        }),
+      });
+
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      let done = false;
+      let aiText = '';
+
+      // Add placeholder for streaming message
+      setMessages((prev) => [...prev, { role: 'ai', text: '' }]);
+
+      while (!done) {
+        const { value, done: readerDone } = await reader!.read();
+        if (value) {
+          const chunk = decoder.decode(value, { stream: true });
+          aiText += chunk;
+
+          setMessages((prev) => {
+            const updated = [...prev];
+            updated[updated.length - 1] = { role: 'ai', text: aiText };
+            return updated;
+          });
+        }
+        done = readerDone;
+      }
+    } catch (err) {
+      console.error('Streaming error:', err);
+      setMessages((prev) => [
+        ...prev,
+        { role: 'ai', text: '⚠️ Something went wrong.' },
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <main className="flex flex-col h-screen relative">
+      {/* Header */}
+      <header className="relative p-4 border-b border-border bg-background text-center">
+        <div className="flex justify-between  mx-auto">
+          <h1 className="text-2xl font-semibold">🤖 Animesh AI</h1>
+          <div className='sm:absolute sm:right-28'>
+            <ModeToggle />
+          </div>
+          <div></div>
+          
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+        <Button
+          variant="ghost"
+          size="sm"
+          className="absolute right-4 top-4"
+          onClick={() => setMessages([])}
         >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+          Clear Chat
+        </Button>
+      </header>
+
+      {/* Messages */}
+      <div
+        ref={chatRef}
+        className="flex-1 overflow-y-auto px-4 py-6 space-y-4 bg-muted"
+      >
+        {messages.map((msg, i) => (
+          <div
+            key={i}
+            ref={msg.role === 'user' && i === messages.length - 2 ? lastUserRef : null}
+          >
+            <Message role={msg.role} text={msg.text} />
+          </div>
+        ))}
+        {isLoading && <Message role="ai" text="..." />}
+      </div>
+
+      {/* Scroll-to-bottom ⬇️ */}
+      {showScrollButton && (
+        <div className="absolute bottom-24 right-4 z-10">
+          <Button
+            onClick={scrollToBottom}
+            size="icon"
+            variant="secondary"
+            className="rounded-full shadow-md"
+          >
+            <ArrowDown className="w-5 h-5" />
+          </Button>
+        </div>
+      )}
+
+      {/* Input (sticky) */}
+      <div className="sticky bottom-0 p-4 border-t border-border bg-background z-20">
+        <div className="flex gap-2">
+          <Input
+            placeholder="Type your message..."
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+            className="flex-1"
+            disabled={isLoading}
           />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+          <Button onClick={sendMessage} disabled={isLoading}>
+            {isLoading ? 'Thinking...' : 'Send'}
+          </Button>
+        </div>
+      </div>
+    </main>
   );
 }
