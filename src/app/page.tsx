@@ -107,7 +107,7 @@ export default function Home() {
         if (value) {
           const chunk = decoder.decode(value, { stream: true });
           fullText += chunk;
-          const delta = fullText.replace(previous, '');
+          
           previous = fullText;
 
           setMessages((prev) => {
