@@ -97,6 +97,8 @@ export default function Home() {
       const decoder = new TextDecoder();
       let done = false;
       let fullText = '';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+let previous = '';
       let previous = '';
 
       // Placeholder AI message
@@ -107,7 +109,8 @@ export default function Home() {
         if (value) {
           const chunk = decoder.decode(value, { stream: true });
           fullText += chunk;
-          
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+let previous = '';
           previous = fullText;
 
           setMessages((prev) => {
