@@ -99,7 +99,7 @@ export default function Home() {
       let fullText = '';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 let previous = '';
-      let previous = '';
+      
 
       // Placeholder AI message
       setMessages((prev) => [...prev, { role: 'ai', text: '' }]);
